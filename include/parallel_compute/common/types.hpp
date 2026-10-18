@@ -46,14 +46,6 @@ struct MutableMatrixView {
   [[nodiscard]] constexpr T* row(std::size_t r) noexcept { return data + r * cols; }
 };
 
-template <class T>
-constexpr MutableMatrixView<T> as_mutable(MatrixView<T> v) noexcept {
-  // Only valid when the source really is mutable storage; provided for
-  // symmetric test code where the non-const buffer was const-qualified by
-  // accident.  Prefer constructing MutableMatrixView directly.
-  return MutableMatrixView<T>(const_cast<T*>(v.data), v.rows, v.cols);
-}
-
 /// Implementation variant selector shared by all kernels.
 ///
 ///  * `reference`        -- portable scalar code, auto-vectorization disabled.

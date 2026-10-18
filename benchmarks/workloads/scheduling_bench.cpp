@@ -73,14 +73,21 @@ void run_scheduling(benchmark::State& state, const ScheduleConfig& cfg, std::siz
 }
 
 // --- false sharing ---------------------------------------------------------
+// The packed layout deliberately places the counters 8 bytes apart so that two
+// threads update the same 64-byte cache line; the padded layout gives each
+// thread its own line.  Everything else -- the work per thread and the number
+// of threads -- is identical, so the difference is attributable to sharing.
 void run_false_sharing(benchmark::State& state, bool padded, int threads) {
   par::set_thread_count(threads);
   auto buffer = par::false_sharing_slots(static_cast<std::size_t>(threads));
-  static std::vector<std::uint64_t> packed(static_cast<std::size_t>(threads), 0);
+  // Fixed capacity: the benchmark is registered for several thread counts in
+  // ascending order, so a vector sized from the first call would be too small
+  // for the later ones.
+  static std::vector<std::uint64_t> packed(4096, 0);
   for (auto* p = buffer.storage.data(); p != buffer.storage.data() + buffer.storage.size(); ++p) {
     *p = 0;
   }
-  std::fill(packed.begin(), packed.end(), std::uint64_t{0});
+  std::fill(packed.begin(), packed.begin() + threads, std::uint64_t{0});
 
   for (auto _ : state) {
     par::ParallelConfig pc;

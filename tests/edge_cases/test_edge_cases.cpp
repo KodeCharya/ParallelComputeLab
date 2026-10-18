@@ -59,6 +59,7 @@ TEST(EdgeCases, ReductionsOnEmptyInput) {
                      parallel_compute::reductions::max_value<double>(empty, backend));
     EXPECT_DOUBLE_EQ(0.0, parallel_compute::memory::sequential_sum<double>(empty, backend));
     EXPECT_DOUBLE_EQ(0.0, parallel_compute::memory::strided_sum<double>(empty, 4, backend));
+    EXPECT_EQ(0U, parallel_compute::memory::strided_element_count(0, 4));
   }
 }
 

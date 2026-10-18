@@ -4,12 +4,14 @@
 // that a future change that reintroduces the bug fails here with an explanation
 // rather than somewhere unrelated.
 #include <cmath>
+#include <memory>
 #include <limits>
 #include <vector>
 
 #include "parallel_compute/algorithms/matmul.hpp"
 #include "parallel_compute/algorithms/reductions.hpp"
 #include "parallel_compute/common/tolerance.hpp"
+#include "parallel_compute/memory/workloads.hpp"
 #include "parallel_compute/parallel/scheduler.hpp"
 #include "parallel_compute/simd/simd_kernels.hpp"
 #include "test_support.hpp"
@@ -168,6 +170,32 @@ TEST(Regression, ParallelForChunksWithFewerItemsThanTeams) {
       for (std::size_t i = begin; i < begin + count; ++i) covered[i] += 1;
     });
     for (std::size_t i = 0; i < n; ++i) EXPECT_EQ(1, covered[i]) << "n=" << n << " i=" << i;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Defect 4b (2026-10-18): memory::strided_sum treated its span as the list of
+// elements to visit, so `strided_sum(buf_of_100, 16)` read up to index 1584 --
+// past the end of the buffer.  It happened to stay in bounds in the benchmark
+// only because that buffer was large; the unit test with n = 100 and stride 16
+// was reading unallocated memory.  The contract is now "the span is the buffer;
+// the number of elements visited is ceil(size / stride)", which is in bounds by
+// construction.
+// ---------------------------------------------------------------------------
+TEST(Regression, StridedSumNeverReadsPastTheBuffer) {
+  for (std::size_t n = 1; n <= 300; ++n) {
+    // A heap buffer whose size is exactly n: AddressSanitizer turns any read
+    // beyond the last element into a hard failure.
+    auto buffer = std::make_unique<double[]>(n);
+    parallel_compute::random::fill_uniform<double>(std::span<double>(buffer.get(), n),
+                                                   0x5EEDULL, -1.0, 1.0);
+    for (std::size_t stride : {1U, 2U, 3U, 7U, 16U, 64U, 128U}) {
+      const double got = parallel_compute::memory::strided_sum<double>(
+          std::span<const double>(buffer.get(), n), stride, Backend::reference);
+      ASSERT_FALSE(std::isnan(got)) << "n=" << n << " stride=" << stride;
+      EXPECT_LE(parallel_compute::memory::strided_element_count(n, stride) * stride, n + stride)
+          << "n=" << n << " stride=" << stride;
+    }
   }
 }
 

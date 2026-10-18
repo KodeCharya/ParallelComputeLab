@@ -63,14 +63,36 @@ TEST_P(MemoryWorkloadTest, SequentialSumMatchesReference) {
 }
 
 TEST_P(MemoryWorkloadTest, StridedSumMatchesReference) {
-  for (std::size_t n : {0U, 1U, 2U, 5U, 16U, 17U, 64U, 100U}) {
+  for (std::size_t n : {0U, 1U, 2U, 5U, 16U, 17U, 64U, 100U, 4096U}) {
     const auto src = pcl_test::make_vector<double>(n, 27);
-    for (std::size_t stride : {1U, 2U, 3U, 8U, 16U}) {
+    for (std::size_t stride : {1U, 2U, 3U, 8U, 16U, 64U}) {
       const double expected = mem::strided_sum<double>(src, stride, Backend::reference);
       const double got = mem::strided_sum<double>(src, stride, backend());
       EXPECT_LT(parallel_compute::relative_error(expected, got), 1e-12)
           << "n=" << n << " stride=" << stride
           << " backend=" << parallel_compute::backend_name(backend());
+    }
+  }
+}
+
+// The strided contract is "span = buffer, count = ceil(size/stride)", which is
+// what keeps every access in bounds for stride > 1.  An earlier version treated
+// the span as the list of visited elements and read past the end of the buffer.
+TEST(MemoryStridedContract, VisitsCeilSizeOverStrideElements) {
+  EXPECT_EQ(0U, mem::strided_element_count(0, 4));
+  EXPECT_EQ(1U, mem::strided_element_count(1, 4));
+  EXPECT_EQ(1U, mem::strided_element_count(4, 4));
+  EXPECT_EQ(2U, mem::strided_element_count(5, 4));
+  EXPECT_EQ(100U, mem::strided_element_count(100, 1));
+  EXPECT_EQ(100U, mem::strided_element_count(100, 0));  // stride 0 == stride 1
+  EXPECT_EQ(7U, mem::strided_element_count(100, 16));
+}
+
+TEST(MemoryStridedContract, TouchesOnlyIndicesInsideTheBuffer) {
+  for (std::size_t n = 1; n <= 200; ++n) {
+    for (std::size_t stride = 1; stride <= 64; ++stride) {
+      const std::size_t count = mem::strided_element_count(n, stride);
+      ASSERT_LE((count - 1) * stride, n - 1) << "n=" << n << " stride=" << stride;
     }
   }
 }

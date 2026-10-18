@@ -65,9 +65,10 @@ PCL_NO_VECTORIZE_ATTR T sequential_reference(std::span<const T> src) {
 template <class T>
 PCL_NO_VECTORIZE_ATTR T strided_reference(std::span<const T> src, std::size_t stride) {
   if (stride == 0) stride = 1;
+  const std::size_t count = strided_element_count(src.size(), stride);
   T total = T{0};
   PCL_NO_VECTORIZE_LOOP
-  for (std::size_t i = 0; i < src.size(); ++i) {
+  for (std::size_t i = 0; i < count; ++i) {
     total += src[i * stride];
   }
   return total;
@@ -99,12 +100,19 @@ T sequential_auto(std::span<const T> src) {
 template <class T>
 T strided_auto(std::span<const T> src, std::size_t stride) {
   if (stride == 0) stride = 1;
+  const std::size_t count = strided_element_count(src.size(), stride);
   T total = T{0};
-  for (std::size_t i = 0; i < src.size(); ++i) total += src[i * stride];
+  for (std::size_t i = 0; i < count; ++i) total += src[i * stride];
   return total;
 }
 
 }  // namespace
+
+std::size_t strided_element_count(std::size_t size, std::size_t stride) noexcept {
+  if (size == 0) return 0;
+  const std::size_t step = stride == 0 ? 1 : stride;
+  return (size + step - 1) / step;
+}
 
 const char* workload_name(Workload w) noexcept {
   switch (w) {
@@ -247,8 +255,10 @@ T strided_sum(std::span<const T> src, std::size_t stride, Backend backend) {
       return strided_auto(src, stride);
     case Backend::openmp:
       if (!omp_worthwhile()) return strided_auto(src, stride);
-      return parallel::parallel_reduce<T>(src.size(), default_cfg(), T{0},
-                                          [&](std::size_t i) { return src[i * (stride == 0 ? 1 : stride)]; });
+      const std::size_t step = stride == 0 ? 1 : stride;
+      const std::size_t count = strided_element_count(src.size(), step);
+      return parallel::parallel_reduce<T>(count, default_cfg(), T{0},
+                                          [&](std::size_t i) { return src[i * step]; });
   }
   return strided_auto(src, stride);
 }

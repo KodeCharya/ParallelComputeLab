@@ -41,9 +41,20 @@ void triad(std::span<T> a, std::span<const T> b, std::span<const T> c, T alpha, 
 template <Real T>
 [[nodiscard]] T sequential_sum(std::span<const T> src, Backend backend);
 
-/// Strided read: sum over src[i * stride].  `stride == 0` is treated as 1.
+/// Strided read: sums `src[0], src[stride], src[2*stride], ...`.
+///
+/// The span is the *buffer*, not the list of visited elements: the number of
+/// elements actually read is `count = (src.size() + stride - 1) / stride`
+/// (0 for an empty span, and stride 0 is treated as 1).  Every index touched is
+/// therefore strictly less than `src.size()`, so the call is always in bounds.
+/// `bytes_touched(Workload::strided, count, sizeof(T))` reports the logical
+/// bytes read, which is a lower bound on the real cache-line traffic.
 template <Real T>
 [[nodiscard]] T strided_sum(std::span<const T> src, std::size_t stride, Backend backend);
+
+/// Number of elements `strided_sum` visits for a buffer of `size` elements.
+[[nodiscard]] std::size_t strided_element_count(std::size_t size,
+                                                 std::size_t stride) noexcept;
 
 }  // namespace parallel_compute::memory
 

@@ -26,31 +26,26 @@ jobs:
             os: ubuntu-24.04
             cc: gcc
             cxx: g++
-            preset: gcc
             build_type: Release
           - name: gcc-debug-asserts
             os: ubuntu-24.04
             cc: gcc
             cxx: g++
-            preset: debug
             build_type: Debug
           - name: clang-portable
             os: ubuntu-24.04
             cc: clang
             cxx: clang++
-            preset: clang
             build_type: Release
           - name: no-openmp-serial
             os: ubuntu-24.04
             cc: gcc
             cxx: g++
-            preset: portable-noopenmp
             build_type: Release
           - name: aarch64-neon
             os: ubuntu-24.04-arm
             cc: gcc
             cxx: g++
-            preset: gcc
             build_type: Release
     steps:
       - uses: actions/checkout@v4

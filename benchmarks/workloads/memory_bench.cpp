@@ -52,8 +52,9 @@ std::vector<Variant> variants(bool allow_openmp) {
 }
 
 constexpr double kAlpha = 1.5;
-constexpr std::size_t kStridedElements = 1u << 16;  // window covered by the strided sweep
-constexpr std::size_t kStridedStride = 16;          // 128 B for f64: > one cache line
+// 16 f64 per touched element = 128 B, i.e. two whole cache lines, so the
+// hardware cannot amortise the line fetch and the read really is strided.
+constexpr std::size_t kStridedStride = 16;
 
 bool validate(Workload w, const pcl_bench::VectorData& data, Backend backend) {
   switch (w) {
@@ -80,9 +81,8 @@ bool validate(Workload w, const pcl_bench::VectorData& data, Backend backend) {
       return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
     }
     case Workload::strided: {
-      const auto window = std::span<const double>(data.a).first(kStridedElements);
-      const double want = mem::strided_sum<double>(window, kStridedStride, Backend::reference);
-      const double got = mem::strided_sum<double>(window, kStridedStride, backend);
+      const double want = mem::strided_sum<double>(data.a, kStridedStride, Backend::reference);
+      const double got = mem::strided_sum<double>(data.a, kStridedStride, backend);
       return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
     }
   }
@@ -101,7 +101,9 @@ void run_workload(benchmark::State& state, Workload w, std::size_t n, const Vari
     return;
   }
 
-  const std::size_t count = (w == Workload::strided) ? kStridedElements : n;
+  const std::size_t count = (w == Workload::strided)
+                                ? mem::strided_element_count(n, kStridedStride)
+                                : n;
   const std::size_t bytes = mem::bytes_touched(
       w == Workload::copy     ? mem::Workload::copy
       : w == Workload::scale  ? mem::Workload::scale
@@ -133,11 +135,9 @@ void run_workload(benchmark::State& state, Workload w, std::size_t n, const Vari
       case Workload::sequential:
         sink = mem::sequential_sum<double>(data.a, variant.backend);
         break;
-      case Workload::strided: {
-        const auto window = std::span<const double>(data.a).first(kStridedElements);
-        sink = mem::strided_sum<double>(window, kStridedStride, variant.backend);
+      case Workload::strided:
+        sink = mem::strided_sum<double>(data.a, kStridedStride, variant.backend);
         break;
-      }
     }
     benchmark::DoNotOptimize(data.y.data());
     benchmark::DoNotOptimize(sink);
@@ -153,8 +153,8 @@ void pcl_bench::register_memory_benchmarks() {
                                            Workload::sequential, Workload::strided};
   for (Workload w : workloads) {
     for (std::size_t n : ctx.vector_sizes) {
-      // The strided sweep reads a fixed 512 KiB window, so only one size is
-      // meaningful for it.
+      // Strided reads only become interesting once the buffer exceeds the
+      // caches, so only the largest size is swept.
       if (w == Workload::strided && n != ctx.vector_sizes.back()) continue;
       for (const Variant& v : variants(par::openmp_enabled())) {
         if (v.parallel_capable) {

@@ -65,13 +65,6 @@ template <class A, class B>
          a.size() == b.size();
 }
 
-/// A "canary" wrapper that verifies every backend of a kernel against the
-/// reference backend on the same input.
-template <class BackendList, class F>
-void for_each_backend(const BackendList& backends, F&& f) {
-  for (auto b : backends) f(b);
-}
-
 inline const std::vector<parallel_compute::Backend>& all_backends() {
   static const std::vector<parallel_compute::Backend> backends = {
       parallel_compute::Backend::reference, parallel_compute::Backend::auto_vectorized,

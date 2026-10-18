@@ -238,4 +238,18 @@ TEST(NumericalMemory, StridedSumMatchesSequentialSumAtStrideOne) {
   EXPECT_LT(parallel_compute::relative_error(seq, strided), 1e-12);
 }
 
+TEST(NumericalMemory, StridedSumMatchesAnIndependentOracle) {
+  const std::size_t n = 4093;  // deliberately not a multiple of any stride used
+  const auto a = pcl_test::make_vector<double>(n, 94);
+  for (std::size_t stride : {1U, 2U, 7U, 16U, 64U}) {
+    double want = 0.0;
+    for (std::size_t i = 0; i < parallel_compute::memory::strided_element_count(n, stride);
+         ++i) {
+      want += a[i * stride];
+    }
+    const double got = parallel_compute::memory::strided_sum<double>(a, stride, Backend::reference);
+    EXPECT_LT(parallel_compute::relative_error(want, got), 1e-12) << "stride=" << stride;
+  }
+}
+
 }  // namespace

@@ -279,13 +279,8 @@ VectorData::VectorData(std::size_t n) {
   b.resize(n);
   y.resize(n);
   ref.resize(n);
-  fa.resize(n);
-  fb.resize(n);
-  fy.resize(n);
   parallel_compute::random::fill_uniform<double>(a, 0xA5A5A5A5ULL, -1.0, 1.0);
   parallel_compute::random::fill_uniform<double>(b, 0x5A5A5A5AULL, -1.0, 1.0);
-  parallel_compute::random::fill_uniform<float>(fa, 0xA5A5A5A5ULL, -1.0f, 1.0f);
-  parallel_compute::random::fill_uniform<float>(fb, 0x5A5A5A5ULL, -1.0f, 1.0f);
   parallel_compute::vector_ops::add<double>(a, b, ref, parallel_compute::Backend::reference);
 }
 
@@ -294,13 +289,8 @@ MatrixData::MatrixData(std::size_t m_, std::size_t n_, std::size_t k_) : m(m_), 
   b.resize(k * n);
   c.resize(m * n);
   ref.resize(m * n);
-  fa.resize(m * k);
-  fb.resize(k * n);
-  fc.resize(m * n);
   parallel_compute::random::fill_uniform<double>(a, 0x1234567ULL, -1.0, 1.0);
   parallel_compute::random::fill_uniform<double>(b, 0x7654321ULL, -1.0, 1.0);
-  parallel_compute::random::fill_uniform<float>(fa, 0x1234567ULL, -1.0f, 1.0f);
-  parallel_compute::random::fill_uniform<float>(fb, 0x7654321ULL, -1.0f, 1.0f);
   parallel_compute::gemm::matmul_reference<double>(
       parallel_compute::MatrixView<const double>(a.data(), m, k),
       parallel_compute::MatrixView<const double>(b.data(), k, n),

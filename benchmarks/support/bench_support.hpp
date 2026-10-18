@@ -79,16 +79,15 @@ std::vector<std::size_t> default_matrix_sizes();
 /// before benchmark::State is entered, so they are never timed.
 /// ---------------------------------------------------------------------------
 struct VectorData {
-  std::vector<double> a, b, y;   // f64 inputs
-  std::vector<float> fa, fb, fy; // f32 inputs
-  std::vector<double> ref;       // reference output for y (f64)
+  std::vector<double> a, b;  // inputs
+  std::vector<double> y;     // output / accumulator
+  std::vector<double> ref;   // reference output for a + b
   explicit VectorData(std::size_t n);
 };
 
 struct MatrixData {
   std::size_t m = 0, n = 0, k = 0;
   std::vector<double> a, b, c, ref;
-  std::vector<float> fa, fb, fc;
   MatrixData(std::size_t m_, std::size_t n_, std::size_t k_);
 };
 
