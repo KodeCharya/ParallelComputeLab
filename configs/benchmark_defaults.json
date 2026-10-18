@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Default workload configuration for scripts/run_benchmarks.py. Every value here is passed straight through to the pcl_benchmarks harness and is recorded verbatim in the result metadata.",
+  "bench": {
+    "repeat": 5,
+    "min_time": "0.05",
+    "out": "results/raw/{label}.json"
+  },
+  "workloads": {
+    "sizes": [1048576, 16777216],
+    "matrix_sizes": [128, 256, 512, 1024],
+    "threads": [1, 2, 4, 8],
+    "blocks": [32, 64, 128],
+    "chunks": [1, 16, 1024]
+  },
+  "filters": {
+    "smoke": {
+      "filter": "PCL/add|PCL/mem_copy",
+      "sizes": [65536],
+      "matrix_sizes": [64],
+      "threads": [1, 2],
+      "min_time": "1x",
+      "repeat": 1
+    },
+    "quick": {
+      "filter": ".*",
+      "sizes": [1048576],
+      "matrix_sizes": [128, 256],
+      "threads": [1, 2, 4],
+      "min_time": "0.02",
+      "repeat": 3
+    },
+    "full": {
+      "filter": ".*",
+      "sizes": [1048576, 16777216],
+      "matrix_sizes": [128, 256, 512, 1024],
+      "threads": [1, 2, 4, 8],
+      "min_time": "0.05",
+      "repeat": 5
+    },
+    "gemm": { "filter": "PCL/gemm", "matrix_sizes": [256, 512, 1024], "threads": [1, 2, 4, 8] },
+    "scheduling": { "filter": "PCL/scheduling|PCL/false_sharing", "threads": [1, 2, 4, 8] }
+  },
+  "notes": [
+    "Sizes are element counts, not bytes: 1048576 f64 = 8 MiB (L3 resident on most CPUs), 16777216 f64 = 128 MiB (streams from main memory).",
+    "threads must not exceed the physical core count if you want meaningful speedup; the analyzer reports efficiency so over-subscription is visible rather than hidden.",
+    "Never compare results across different builds or CPUs; scripts/analyze_results.py groups by the machine/build fingerprint and refuses to mix them silently."
+  ]
+}

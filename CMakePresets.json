@@ -1,0 +1,125 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PCL_WERROR": "ON"
+      }
+    },
+    {
+      "name": "gcc",
+      "inherits": "base",
+      "displayName": "GCC Release + OpenMP + AVX2-target kernels",
+      "description": "Portable baseline build with GCC; explicit SIMD kernels still use runtime dispatch.",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "PCL_SIMD_LEVEL": "portable"
+      }
+    },
+    {
+      "name": "clang",
+      "inherits": "base",
+      "displayName": "Clang Release + OpenMP",
+      "description": "Same sources built with Clang for compiler comparison.",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "PCL_SIMD_LEVEL": "portable"
+      }
+    },
+    {
+      "name": "gcc-avx2-native",
+      "inherits": "gcc",
+      "displayName": "GCC Release built with -march=native",
+      "description": "Non-portable build used only for local compiler-output inspection.",
+      "cacheVariables": {
+        "PCL_NATIVE_ARCH": "ON",
+        "PCL_SIMD_LEVEL": "avx2",
+        "PCL_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "gcc",
+      "displayName": "Debug build with assertions",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PCL_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "gcc",
+      "displayName": "Release + AddressSanitizer + UndefinedBehaviorSanitizer",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PCL_ENABLE_ASAN": "ON",
+        "PCL_ENABLE_UBSAN": "ON",
+        "PCL_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "gcc",
+      "displayName": "Release + ThreadSanitizer (separate configuration)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PCL_ENABLE_TSAN": "ON",
+        "PCL_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "portable-noopenmp",
+      "inherits": "gcc",
+      "displayName": "Portable single-threaded configuration",
+      "description": "No OpenMP, no explicit SIMD -- the minimal portable baseline used in CI.",
+      "cacheVariables": {
+        "PCL_ENABLE_OPENMP": "OFF",
+        "PCL_ENABLE_SIMD": "OFF",
+        "PCL_ENABLE_BLAS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gcc", "configurePreset": "gcc" },
+    { "name": "clang", "configurePreset": "clang" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "portable-noopenmp", "configurePreset": "portable-noopenmp" },
+    { "name": "debug", "configurePreset": "debug" }
+  ],
+  "testPresets": [
+    {
+      "name": "gcc",
+      "configurePreset": "gcc",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "jobs": 4 }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "jobs": 2 }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "jobs": 2 }
+    },
+    {
+      "name": "portable-noopenmp",
+      "configurePreset": "portable-noopenmp",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+# Build trees
+build/
+build-*/
+out/
+cmake-build-*/
+
+# Generated result data (structure and small reference files are kept)
+results/**/*.json
+results/**/*.csv
+results/**/*.png
+results/**/*.svg
+results/**/*.md
+!results/README.md
+!results/reference/**
+!results/*.gitkeep
+
+# Compiled objects and binaries
+*.o
+*.a
+*.so
+*.so.*
+*.d
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+compile_commands.json
+
+# Editor / OS noise
+.vscode/
+.idea/
+.cache/
+*.swp
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

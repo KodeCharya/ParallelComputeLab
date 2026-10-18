@@ -1,0 +1,195 @@
+name: CI
+
+# Pull request checks are correctness checks only.  Long performance
+# experiments never gate a merge: shared runners are not a measurement
+# environment and timing thresholds there would be meaningless.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-portable
+            os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+            preset: gcc
+            build_type: Release
+          - name: gcc-debug-asserts
+            os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+            preset: debug
+            build_type: Debug
+          - name: clang-portable
+            os: ubuntu-24.04
+            cc: clang
+            cxx: clang++
+            preset: clang
+            build_type: Release
+          - name: no-openmp-serial
+            os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+            preset: portable-noopenmp
+            build_type: Release
+          - name: aarch64-neon
+            os: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+            preset: gcc
+            build_type: Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libgomp1
+
+      - name: Configure (${{ matrix.name }})
+        run: |
+          cmake -S . -B build/ci \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DPCL_WERROR=ON
+
+      - name: Build
+        run: cmake --build build/ci -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build/ci --output-on-failure -j"$(nproc)"
+
+      - name: Record compiler flags actually used
+        run: |
+          {
+            echo "### build configuration"
+            echo '```'
+            cat build/ci/generated/parallel_compute/system/build_config.hpp | grep constexpr
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sanitizers:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ASan and UBSan can share a build; TSan must be alone.
+          - name: asan+ubsan
+            preset: asan
+            env: 'PCL_ENABLE_ASAN=ON PCL_ENABLE_UBSAN=ON'
+            jobs: 2
+          - name: tsan
+            preset: tsan
+            env: 'PCL_ENABLE_TSAN=ON'
+            jobs: 2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libgomp1
+          cmake -S . -B build/${{ matrix.preset }} -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -D${{ matrix.env }} \
+            -DPCL_BUILD_BENCHMARKS=OFF -DPCL_WERROR=OFF
+
+      - name: Build
+        run: cmake --build build/${{ matrix.preset }} -j"$(nproc)"
+
+      # Sanitizer findings are never suppressed or worked around; a report here
+      # is a real defect that has to be fixed, not a warning to ignore.
+      - name: Test under sanitizers
+        run: |
+          ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 \
+          UBSAN_OPTIONS=print_stacktrace=1 \
+          TSAN_OPTIONS=halt_on_error=1 \
+          ctest --test-dir build/${{ matrix.preset }} --output-on-failure -j${{ matrix.jobs }}
+
+  benchmark-smoke:
+    name: benchmark smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain and BLAS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build libgomp1 libopenblas-dev
+
+      - name: Configure (with the optional BLAS baseline)
+        run: |
+          cmake -S . -B build/bench -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DPCL_WERROR=ON
+          grep -E "BLAS|OpenMP" build/bench/CMakeCache.txt || true
+
+      - name: Build
+        run: cmake --build build/bench -j"$(nproc)"
+
+      # One iteration per benchmark: this verifies that the harness registers,
+      # validates and serialises results.  It deliberately asserts nothing about
+      # the timings.
+      - name: Smoke run (single iteration, no timing assertions)
+        run: |
+          python3 scripts/run_benchmarks.py \
+            --build build/bench --preset smoke --label ci-smoke \
+            --outdir results/raw
+
+      - name: Validate raw results
+        run: |
+          python3 scripts/validate_results.py \
+            results/raw/ci-smoke.json --meta results/raw/ci-smoke.meta.json
+
+      - name: Analyse smoke results
+        run: |
+          python3 -m pip install --quiet matplotlib
+          python3 scripts/analyze_results.py \
+            results/raw/ci-smoke.json --meta results/raw/ci-smoke.meta.json \
+            --outdir results/analysis-ci
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-smoke-${{ github.run_id }}
+          path: results/
+          retention-days: 14
+
+  portability:
+    name: dependency provenance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure without FetchContent (system packages only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build libgomp1 libgtest-dev libbenchmark-dev libopenblas-dev
+          # Proves the "prefer system packages" path in cmake/Dependencies.cmake.
+          cmake -S . -B build/sysdeps -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DPCL_FETCH_DEPENDENCIES=OFF \
+            -DPCL_BUILD_BENCHMARKS=ON -DPCL_WERROR=ON
+          cmake --build build/sysdeps -j"$(nproc)"
+          ctest --test-dir build/sysdeps --output-on-failure
