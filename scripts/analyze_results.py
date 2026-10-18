@@ -514,6 +514,26 @@ def variant_table(measurements: list[Measurement]) -> list[Measurement]:
     return sorted(out, key=lambda x: (x.token, x.name))
 
 
+def headline_table(measurements: list[Measurement]) -> list[Measurement]:
+    """Fastest single-threaded variant per (kernel, size), and best parallel run.
+
+    Only entries that have both a `reference` baseline and a real speedup are
+    included; anything without a baseline is reported in the missing-config
+    section instead of being ranked.
+    """
+    best: dict[tuple[str, str], Measurement] = {}
+    for m in measurements:
+        if m.threads != 1 or not m.fields.get("variant_speedup"):
+            continue
+        if m.fields.get("variant") == "reference":
+            continue
+        key = (m.token, m.fields.get("n", m.fields.get("edge", m.fields.get("items", ""))))
+        current = best.get(key)
+        if current is None or m.median_ns < current.median_ns:
+            best[key] = m
+    return [best[k] for k in sorted(best)]
+
+
 def _plot_scaling(measurements: list[Measurement], out: Path) -> list[Path]:
     if not HAVE_MPL:
         return []
@@ -674,6 +694,21 @@ def write_report(
             handle.write("\n")
         else:
             handle.write("_No comparable single-threaded variants were found._\n\n")
+
+        handle.write("## Headline: fastest single-threaded variant per kernel\n\n")
+        handle.write("| kernel | size | fastest variant | vs reference | median ns | "
+                     "MAD/median |\n")
+        handle.write("|---|---|---|---:|---:|---:|\n")
+        headline = headline_table(measurements)
+        if headline:
+            for m in headline:
+                handle.write(
+                    f"| `{m.token}` | {m.size} | {m.fields['variant']} | "
+                    f"{m.fields['variant_speedup']} | {m.median_ns:.0f} | {m.rel_mad:.4f} |\n"
+                )
+        else:
+            handle.write("| _none could be ranked: no variant had a `reference` baseline_ | | | | | |\n")
+        handle.write("\n")
 
         gaps = missing_configurations(measurements)
         handle.write("## Missing configurations\n\n")

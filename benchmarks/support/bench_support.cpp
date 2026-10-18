@@ -1,6 +1,8 @@
 #include "bench_support.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -326,6 +328,38 @@ std::string make_label(const char* backend, int threads, const char* schedule, s
   os << "backend=" << backend << ",threads=" << threads << ",schedule=" << schedule
      << ",chunk=" << chunk;
   return os.str();
+}
+
+double reassociation_abs_tolerance(std::size_t terms, double sum_abs_value,
+                                   double safety_factor) noexcept {
+  if (terms < 2) return 0.0;
+  const double eps = std::numeric_limits<double>::epsilon();
+  return safety_factor * static_cast<double>(terms - 1) * eps * sum_abs_value;
+}
+
+double sum_abs(const std::vector<double>& v) noexcept {
+  double total = 0.0;
+  for (double x : v) total += std::fabs(x);
+  return total;
+}
+
+double gemm_abs_tolerance(std::size_t m, std::size_t n, std::size_t k,
+                          double sum_abs_products) noexcept {
+  if (m == 0 || n == 0 || k < 2) return 0.0;
+  const double eps = std::numeric_limits<double>::epsilon();
+  // Every output entry is an independent dot product of length k, so the same
+  // forward-error bound applies to each of the m*n entries.
+  return 2.0 * static_cast<double>(k - 1) * eps * sum_abs_products;
+}
+
+bool results_within(const std::vector<double>& want, const std::vector<double>& got,
+                    double abs_tol) {
+  if (want.size() != got.size()) return false;
+  for (std::size_t i = 0; i < want.size(); ++i) {
+    const double diff = std::fabs(want[i] - got[i]);
+    if (!(diff <= abs_tol)) return false;  // false for NaN
+  }
+  return true;
 }
 
 bool results_agree(const std::vector<double>& want, const std::vector<double>& got,

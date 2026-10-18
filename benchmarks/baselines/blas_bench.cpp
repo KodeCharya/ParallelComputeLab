@@ -34,7 +34,15 @@ void run_blas_gemm(benchmark::State& state, std::size_t edge, int threads) {
     state.SkipWithError("no BLAS available in this build");
     return;
   }
-  if (!pcl_bench::results_agree(data.ref, check, pcl_bench::gemm_tolerance())) {
+  std::vector<double> products(k);
+  for (std::size_t p = 0; p < k; ++p) {
+    double acc = 0.0;
+    for (std::size_t q = 0; q < k; ++q) acc += std::fabs(data.a[q] * data.b[p * n + q]);
+    products[p] = acc;
+  }
+  const double bound =
+      pcl_bench::gemm_abs_tolerance(m, n, k, pcl_bench::sum_abs(products));
+  if (!pcl_bench::results_within(data.ref, check, bound)) {
     state.SkipWithError("BLAS GEMM disagrees with the scalar reference GEMM");
     return;
   }

@@ -5,6 +5,7 @@
 // docs/BENCHMARKING.md.  For the strided workload the reported byte count is a
 // LOWER BOUND: the hardware actually moves whole cache lines, so the achieved
 // "bandwidth" for a large stride is a small fraction of the DRAM bandwidth.
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -78,12 +79,19 @@ bool validate(Workload w, const pcl_bench::VectorData& data, Backend backend) {
     case Workload::sequential: {
       const double want = mem::sequential_sum<double>(data.a, Backend::reference);
       const double got = mem::sequential_sum<double>(data.a, backend);
-      return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
+      const double bound =
+          pcl_bench::reassociation_abs_tolerance(data.a.size(), pcl_bench::sum_abs(data.a));
+      return pcl_bench::results_within({want}, {got}, bound);
     }
     case Workload::strided: {
       const double want = mem::strided_sum<double>(data.a, kStridedStride, Backend::reference);
       const double got = mem::strided_sum<double>(data.a, kStridedStride, backend);
-      return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
+      const std::size_t count =
+          mem::strided_element_count(data.a.size(), kStridedStride);
+      double sum_abs = 0.0;
+      for (std::size_t i = 0; i < count; ++i) sum_abs += std::fabs(data.a[i * kStridedStride]);
+      const double bound = pcl_bench::reassociation_abs_tolerance(count, sum_abs);
+      return pcl_bench::results_within({want}, {got}, bound);
     }
   }
   return false;

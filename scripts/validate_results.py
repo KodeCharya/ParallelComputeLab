@@ -110,9 +110,16 @@ def _check_entries(path: Path, data: Any, report: Report) -> None:
     for entry in entries:
         report.entries_checked += 1
         name = entry.get("run_name", entry.get("name", "<unnamed>"))
-        if "aggregate_name" in entry and entry.get("aggregate_unit") == "error":
-            # Google Benchmark's own "errors" aggregate carries the message.
-            report.problems.append(Problem(str(path), f"{name}: error aggregate {entry.get('error_occurred')}"))
+        if entry.get("error_occurred"):
+            # Google Benchmark records a failed/skipped run this way.  It is a
+            # hard problem: the benchmark did not produce a usable measurement.
+            report.problems.append(
+                Problem(
+                    str(path),
+                    f"{name}: benchmark reported error_occurred "
+                    "(the pre-timing correctness gate rejected this variant)",
+                )
+            )
             continue
         if entry.get("run_type") not in (None, "iteration", "aggregate"):
             report.problems.append(Problem(str(path), f"{name}: unknown run_type {entry.get('run_type')!r}"))

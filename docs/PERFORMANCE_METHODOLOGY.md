@@ -39,6 +39,50 @@ End-to-end timings (including allocation) are deliberately **not** mixed into
 these results; if that overhead matters for a specific use case it has to be
 measured separately and labelled as such.
 
+## 2a. How the correctness gate decides "correct"
+
+This matters more than it first appears, because the first attempt at it was
+wrong and the benchmark run itself caught it.
+
+**Element-wise operations** (`add`, `multiply`, `scale`, `saxpy`, `copy`,
+`triad`) have no reduction, so every backend must agree with the reference
+**exactly**.  A tolerance here would hide a real bug.
+
+**Reductions and GEMM** reassociate the sum, so they need a real error model.
+For a summation of `n` terms,
+
+```
+|approx - exact|  <=  (n - 1) * eps * sum_i |x_i|
+```
+
+holds for *every* ordering — naive and pairwise alike.  Two different orders
+therefore differ by at most twice that, and the gate compares against
+
+```
+tol_abs = 2 * (n - 1) * eps * sum_i |x_i|
+```
+
+with `eps = DBL_EPSILON`.  `sum|x_i|` is computed once, outside the timed region.
+
+**The naive alternative does not work.**  The first full measurement run used a
+flat `1e-12` relative tolerance, and the correctness gate rejected `reduce_dot`
+at `n = 16 777 216` with 4 and 8 threads.  That rejection was *correct
+behaviour on a wrong criterion*: at that size the flat serial reference is
+itself the **least** accurate ordering available (its error grows like `n`),
+while the OpenMP reduction is a tree whose error grows like `log2(n)`.  The two
+differ by far more than `1e-12` relative — and both are "right" to within the
+problem's own conditioning.  A fixed relative epsilon is only meaningful while
+`n * eps` stays comfortably below the magnitude of the answer, which is not
+something a benchmark can assume.
+
+The same forward-error bound is applied to GEMM, per output entry, with `n = k`
+(the dot-product length) and `sum|x_i|` replaced by the sum of `|a * b|` along
+the part of `B` that entry consumes.
+
+The practical consequence is worth stating plainly: **the correctness gate is
+part of the experiment, not a formality.**  A gate that is too tight produces
+false alarms that look like defects; a gate that is too loose hides real ones.
+
 ## 3. Repetitions and dispersion
 
 * `--benchmark_repetitions=5` by default; every repetition is written to the

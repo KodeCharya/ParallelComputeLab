@@ -4,6 +4,7 @@
 // entry for them intentionally reports the same serial fold as
 // `auto_vectorized`; the comparison is kept so that claim is visible in the
 // results rather than only in the documentation.
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -50,30 +51,36 @@ std::vector<Variant> variants(bool allow_openmp) {
   return v;
 }
 
+/// min/max are comparisons, not sums: their result is exact for every backend,
+/// so an exact comparison is the right one.  sum/mean/dot reassociate, so they
+/// are checked against the forward-error bound of the problem.
 bool validate(Reduction r, const pcl_bench::VectorData& data, Backend backend) {
   const auto a = std::span<const double>(data.a);
   const auto b = std::span<const double>(data.b);
   switch (r) {
-    case Reduction::sum:
     case Reduction::min:
+      return red::min_value<double>(a, backend) == red::min_value<double>(a, Backend::reference);
     case Reduction::max:
+      return red::max_value<double>(a, backend) == red::max_value<double>(a, Backend::reference);
+    case Reduction::sum:
     case Reduction::mean: {
-      const double want =
-          r == Reduction::sum     ? red::sum<double>(a, Backend::reference)
-          : r == Reduction::min   ? red::min_value<double>(a, Backend::reference)
-          : r == Reduction::max   ? red::max_value<double>(a, Backend::reference)
-                                  : red::mean<double>(a, Backend::reference);
-      const double got =
-          r == Reduction::sum   ? red::sum<double>(a, backend)
-          : r == Reduction::min ? red::min_value<double>(a, backend)
-          : r == Reduction::max ? red::max_value<double>(a, backend)
-                                : red::mean<double>(a, backend);
-      return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
+      const double want = r == Reduction::sum
+                              ? red::sum<double>(a, Backend::reference)
+                              : red::mean<double>(a, Backend::reference);
+      const double got = r == Reduction::sum ? red::sum<double>(a, backend)
+                                             : red::mean<double>(a, backend);
+      const double bound =
+          pcl_bench::reassociation_abs_tolerance(a.size(), pcl_bench::sum_abs(data.a));
+      return pcl_bench::results_within({want}, {got}, bound);
     }
     case Reduction::dot: {
       const double want = red::dot<double>(a, b, Backend::reference);
       const double got = red::dot<double>(a, b, backend);
-      return parallel_compute::approx_equal<double>(want, got, pcl_bench::reduction_tolerance());
+      std::vector<double> products(a.size());
+      for (std::size_t i = 0; i < a.size(); ++i) products[i] = std::fabs(a[i] * b[i]);
+      const double bound =
+          pcl_bench::reassociation_abs_tolerance(a.size(), pcl_bench::sum_abs(products));
+      return pcl_bench::results_within({want}, {got}, bound);
     }
   }
   return false;

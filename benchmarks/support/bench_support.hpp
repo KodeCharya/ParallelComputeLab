@@ -54,12 +54,36 @@ void register_memory_benchmarks();
 void register_scheduling_benchmarks();
 void register_blas_benchmarks();
 
-/// Tolerance used for the pre-timing correctness gate.  Element-wise results
-/// are order independent, so this is tight; GEMM and reductions use a looser
-/// one (see GemmOptions::tolerance).
+/// Tolerance used for the pre-timing correctness gate.
+///
+/// For element-wise results the variants are order independent, so the
+/// comparison can be exact.
 inline parallel_compute::Tolerance elementwise_tolerance() { return {0.0, 0.0}; }
-inline parallel_compute::Tolerance reduction_tolerance() { return {1e-12, 1e-12}; }
-inline parallel_compute::Tolerance gemm_tolerance() { return {1e-11, 1e-11}; }
+
+/// Forward-error bound for a sum of `terms` terms reassociated into a
+/// different order.
+///
+/// A naive summation of n terms satisfies |approx - exact| <= (n-1) * eps *
+/// sum|x_i|; the same bound holds for every pairwise/tree order.  Two
+/// different orders therefore differ by at most twice that, so the honest
+/// tolerance is an **absolute** bound derived from the problem, not a fixed
+/// relative epsilon.
+///
+/// This matters: a fixed 1e-12 relative tolerance on a 16.7M-element dot
+/// product rejects results that are perfectly correct, because the flat
+/// serial reference itself is the least accurate ordering of them all.  That
+/// is not a hypothetical -- it is what the first full measurement run did,
+/// which is why two entries were skipped by the correctness gate.
+[[nodiscard]] double reassociation_abs_tolerance(std::size_t terms, double sum_abs_value,
+                                                 double safety_factor = 2.0) noexcept;
+
+/// Sum of |x_i| for a buffer; used to evaluate the bound above.
+[[nodiscard]] double sum_abs(const std::vector<double>& v) noexcept;
+
+/// GEMM-specific bound: the same argument, applied to a dot product of length
+/// k for each of the m*n output entries.
+[[nodiscard]] double gemm_abs_tolerance(std::size_t m, std::size_t n, std::size_t k,
+                                        double sum_abs_products) noexcept;
 
 /// Human readable list of the --pcl_* flags, printed by the harness.
 const std::vector<std::string>& context_flag_names();
@@ -111,6 +135,11 @@ std::string make_label(const char* backend, int threads, const char* schedule, s
 /// Element-wise comparison used for the pre-timing correctness gate.
 bool results_agree(const std::vector<double>& want, const std::vector<double>& got,
                    parallel_compute::Tolerance tol);
+
+/// Absolute-tolerance comparison used by the correctness gate for anything
+/// whose accumulation order differs between variants.
+[[nodiscard]] bool results_within(const std::vector<double>& want, const std::vector<double>& got,
+                                  double abs_tol);
 
 /// Registers `name` only when `cond` holds, so unavailable variants (no BLAS,
 /// no OpenMP, no AVX2) never appear in the result set.

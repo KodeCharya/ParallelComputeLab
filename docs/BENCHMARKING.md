@@ -127,6 +127,23 @@ finishes in seconds, not minutes: at `n = 1024` the reference kernel alone
 dominates the run time.  Use `--pcl_matrix_sizes=1024` deliberately, and expect
 the reference entry to be slow — that *is* the finding.
 
+## Correctness gate
+
+A variant is checked against the scalar reference **before** it is timed.
+
+| Kernel class | Criterion |
+|---|---|
+| element-wise (`add`, `multiply`, `scale`, `saxpy`, `copy`, `triad`) | **exact** equality — these have no reduction, so any difference is a defect |
+| `min` / `max` | **exact** equality — comparisons do not reassociate |
+| `sum`, `mean`, `dot`, streaming/strided reads | forward-error bound `2*(n-1)*eps*sum|x_i|` |
+| GEMM, every variant | per-entry forward-error bound `2*(k-1)*eps*sum|a*b|` |
+
+A variant that fails is reported by Google Benchmark as an error, is counted as
+a validation problem by `validate_results.py`, and never contributes a timing.
+The rationale — and the concrete case where a flat relative tolerance produced
+a false alarm — is in
+[`PERFORMANCE_METHODOLOGY.md`](PERFORMANCE_METHODOLOGY.md) §2a.
+
 ## Analysis
 
 ```bash

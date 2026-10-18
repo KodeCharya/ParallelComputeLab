@@ -11,6 +11,7 @@
 // Byte counting for the bandwidth counter uses the documented GEMM traffic
 // model 2*(m*n + k*n + m*k)*sizeof(T), which is a *model* of main-memory
 // traffic for a cache-blocked kernel, not a measurement of it.
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -87,7 +88,17 @@ void run_gemm(benchmark::State& state, std::size_t edge, Variant variant, std::s
     state.SkipWithError("no BLAS available in this build");
     return;
   }
-  if (!pcl_bench::results_agree(data.ref, check, pcl_bench::gemm_tolerance())) {
+  // Forward-error bound: every C entry is a length-k dot product, and two
+  // different accumulation orders can differ by twice (k-1)*eps*sum|a*b|.
+  std::vector<double> products(k);
+  for (std::size_t p = 0; p < k; ++p) {
+    double acc = 0.0;
+    for (std::size_t q = 0; q < k; ++q) acc += std::fabs(data.a[q] * data.b[p * n + q]);
+    products[p] = acc;
+  }
+  const double gemm_bound =
+      pcl_bench::gemm_abs_tolerance(m, n, k, pcl_bench::sum_abs(products));
+  if (!pcl_bench::results_within(data.ref, check, gemm_bound)) {
     state.SkipWithError(std::string(variant_name(variant)) +
                         " disagrees with the scalar reference GEMM");
     return;
